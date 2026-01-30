@@ -117,11 +117,7 @@ async def setPrefix(client, message):
 @colab_bot.on_message(filters.create(isLink) & ~filters.photo)
 async def handle_url(client, message):
     global BOT
-
-    # Reset
-    BOT.Options.custom_name = ""
-    BOT.Options.zip_pswd = ""
-    BOT.Options.unzip_pswd = ""
+    from .utility.variables import PendingTask
 
     if src_request_msg:
         await src_request_msg.delete()
@@ -131,28 +127,47 @@ async def handle_url(client, message):
     
     # Parse the source links and options
     temp_source = message.text.splitlines()
+    custom_name = ""
+    zip_pswd = ""
+    unzip_pswd = ""
 
     # Check for arguments in message
     for _ in range(3):
         if temp_source and temp_source[-1]:
             if temp_source[-1][0] == "[":
-                BOT.Options.custom_name = temp_source[-1][1:-1]
+                custom_name = temp_source[-1][1:-1]
                 temp_source.pop()
             elif temp_source[-1][0] == "{":
-                BOT.Options.zip_pswd = temp_source[-1][1:-1]
+                zip_pswd = temp_source[-1][1:-1]
                 temp_source.pop()
             elif temp_source[-1][0] == "(":
-                BOT.Options.unzip_pswd = temp_source[-1][1:-1]
+                unzip_pswd = temp_source[-1][1:-1]
                 temp_source.pop()
             else:
                 break
         else:
             break
 
-    BOT.SOURCE = temp_source
+    # Store in PendingTask to avoid overwriting running task's global state
+    PendingTask.source = temp_source.copy()
+    PendingTask.mode = BOT.Mode.mode
+    PendingTask.ytdl = BOT.Mode.ytdl
+    PendingTask.custom_name = custom_name
+    PendingTask.zip_pswd = zip_pswd
+    PendingTask.unzip_pswd = unzip_pswd
+    PendingTask.stream_upload = BOT.Options.stream_upload
+    PendingTask.caption = BOT.Options.caption
+    PendingTask.convert_video = BOT.Options.convert_video
+    PendingTask.video_out = BOT.Options.video_out
+    
+    # Only update global state if no task is running
+    if not BOT.State.task_going:
+        BOT.SOURCE = temp_source
+        BOT.Options.custom_name = custom_name
+        BOT.Options.zip_pswd = zip_pswd
+        BOT.Options.unzip_pswd = unzip_pswd
     
     # Show task type selection regardless of whether another task is running
-    # The actual execution will be queued if needed
     keyboard = InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("Regular", callback_data="normal")],
@@ -171,7 +186,7 @@ async def handle_url(client, message):
         queue_notice = ""
     
     await message.reply_text(
-        text=f"<b>🐹 Select Type of {BOT.Mode.mode.capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>{queue_notice}",
+        text=f"<b>🐹 Select Type of {PendingTask.mode.capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>{queue_notice}",
         reply_markup=keyboard,
         quote=True,
     )
@@ -181,9 +196,9 @@ async def handle_url(client, message):
 @colab_bot.on_callback_query()
 async def handle_options(client, callback_query):
     global BOT, MSG
+    from .utility.variables import PendingTask
 
     if callback_query.data in ["normal", "zip", "unzip", "undzip"]:
-        BOT.Mode.type = callback_query.data
         await callback_query.message.delete()
         await colab_bot.delete_messages(
             chat_id=callback_query.message.chat.id,
@@ -192,33 +207,34 @@ async def handle_options(client, callback_query):
         
         # Check if a task is already running - queue instead of blocking
         if BOT.State.task_going:
-            # Add to queue
+            # Add to queue using PendingTask data (not global BOT which is being used by running task)
             task = await task_queue.add_task(
-                source=BOT.SOURCE,
-                mode=BOT.Mode.mode,
+                source=PendingTask.source.copy(),  # Copy to avoid reference issues
+                mode=PendingTask.mode,
                 task_type=callback_query.data,
-                ytdl=BOT.Mode.ytdl,
-                custom_name=BOT.Options.custom_name,
-                zip_pswd=BOT.Options.zip_pswd,
-                unzip_pswd=BOT.Options.unzip_pswd,
-                stream_upload=BOT.Options.stream_upload,
-                caption_style=BOT.Options.caption,
-                convert_video=BOT.Options.convert_video,
-                video_out=BOT.Options.video_out
+                ytdl=PendingTask.ytdl,
+                custom_name=PendingTask.custom_name,
+                zip_pswd=PendingTask.zip_pswd,
+                unzip_pswd=PendingTask.unzip_pswd,
+                stream_upload=PendingTask.stream_upload,
+                caption_style=PendingTask.caption,
+                convert_video=PendingTask.convert_video,
+                video_out=PendingTask.video_out
             )
             position = task_queue.get_queue_position(task.task_id)
             await colab_bot.send_message(
                 chat_id=OWNER,
                 text=f"✅ **Task Queued Successfully!**\n\n"
                      f"📋 Task ID: `{task.task_id}`\n"
-                     f"📦 Type: {callback_query.data.capitalize()} {BOT.Mode.mode.capitalize()}\n"
+                     f"📦 Type: {callback_query.data.capitalize()} {PendingTask.mode.capitalize()}\n"
                      f"📊 Position in queue: #{position}\n\n"
                      f"Your task will start automatically after the current task finishes.\n"
                      f"Use /queue to see all pending tasks",
             )
             BOT.State.started = False
         else:
-            # Execute immediately
+            # Execute immediately - set task type on global state
+            BOT.Mode.type = callback_query.data
             MSG.status_msg = await colab_bot.send_message(
                 chat_id=OWNER,
                 text="#STARTING_TASK\n\n**Starting your task in a few Seconds...🦐**",
@@ -383,7 +399,7 @@ async def handle_options(client, callback_query):
 
     # @main Triggering Actual Leech Functions
     elif callback_query.data in ["ytdl-true", "ytdl-false"]:
-        BOT.Mode.ytdl = True if callback_query.data == "ytdl-true" else False
+        ytdl_enabled = True if callback_query.data == "ytdl-true" else False
         await callback_query.message.delete()
         await colab_bot.delete_messages(
             chat_id=callback_query.message.chat.id,
@@ -392,33 +408,34 @@ async def handle_options(client, callback_query):
         
         # Check if a task is already running - queue instead of blocking
         if BOT.State.task_going:
-            # Add to queue
+            # Add to queue using PendingTask data
             task = await task_queue.add_task(
-                source=BOT.SOURCE,
-                mode=BOT.Mode.mode,
-                task_type=BOT.Mode.type,
-                ytdl=BOT.Mode.ytdl,
-                custom_name=BOT.Options.custom_name,
-                zip_pswd=BOT.Options.zip_pswd,
-                unzip_pswd=BOT.Options.unzip_pswd,
-                stream_upload=BOT.Options.stream_upload,
-                caption_style=BOT.Options.caption,
-                convert_video=BOT.Options.convert_video,
-                video_out=BOT.Options.video_out
+                source=PendingTask.source.copy(),
+                mode=PendingTask.mode,
+                task_type="normal",  # YTDL tasks are always "normal" type
+                ytdl=ytdl_enabled,
+                custom_name=PendingTask.custom_name,
+                zip_pswd=PendingTask.zip_pswd,
+                unzip_pswd=PendingTask.unzip_pswd,
+                stream_upload=PendingTask.stream_upload,
+                caption_style=PendingTask.caption,
+                convert_video=PendingTask.convert_video,
+                video_out=PendingTask.video_out
             )
             position = task_queue.get_queue_position(task.task_id)
             await colab_bot.send_message(
                 chat_id=OWNER,
                 text=f"✅ **Task Queued Successfully!**\n\n"
                      f"📋 Task ID: `{task.task_id}`\n"
-                     f"📦 Type: YTDL {BOT.Mode.mode.capitalize()}\n"
+                     f"📦 Type: YTDL {PendingTask.mode.capitalize()}\n"
                      f"📊 Position in queue: #{position}\n\n"
                      f"Your task will start automatically after the current task finishes.\n"
                      f"Use /queue to see all pending tasks",
             )
             BOT.State.started = False
         else:
-            # Execute immediately
+            # Execute immediately - set ytdl mode on global state
+            BOT.Mode.ytdl = ytdl_enabled
             MSG.status_msg = await colab_bot.send_message(
                 chat_id=OWNER,
                 text="#STARTING_TASK\n\n**Starting your task in a few Seconds...🦐**",

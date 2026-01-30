@@ -42,6 +42,21 @@ class BOT:
         suffix = False
 
 
+# Temporary storage for pending task data (before user selects task type)
+# This prevents overwriting running task's global state
+class PendingTask:
+    source = []
+    mode = "leech"
+    ytdl = False
+    custom_name = ""
+    zip_pswd = ""
+    unzip_pswd = ""
+    stream_upload = True
+    caption = "code"
+    convert_video = True
+    video_out = "mp4"
+
+
 class YTDL:
     header = ""
     speed = ""
