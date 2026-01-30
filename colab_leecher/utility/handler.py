@@ -167,13 +167,16 @@ async def Unzip_Handler(down_path: str, remove: bool):
         f"\n<b>📂 EXTRACTING » </b>\n\n<code>{Messages.download_name}</code>\n"
     )
 
-    MSG.status_msg = await MSG.status_msg.edit_text(
-        text=Messages.task_msg
-        + Messages.status_head
-        + "\n⏳ __Starting.....__"
-        + sysINFO(),
-        reply_markup=keyboard(),
-    )
+    try:
+        MSG.status_msg = await MSG.status_msg.edit_text(
+            text=Messages.task_msg
+            + Messages.status_head
+            + "\n⏳ __Starting.....__"
+            + sysINFO(),
+            reply_markup=keyboard(),
+        )
+    except Exception as e:
+        logging.warning(f"Could not edit status message in Unzip_Handler: {e}")
     filenames = [str(p) for p in pathlib.Path(down_path).glob("**/*") if p.is_file()]
     for f in natsorted(filenames):
         short_path = ospath.join(down_path, f)
@@ -257,23 +260,45 @@ async def SendLogs(is_leech: bool):
         await MSG.sent_msg.reply_text(
             text=f"**SOURCE »** __[Here]({Messages.src_link})__" + last_text
         )
-        await MSG.status_msg.edit_text(
-            text=Messages.task_msg + l_ink + last_text,
-            reply_markup=InlineKeyboardMarkup(
-                [
+        # Try to edit status message, fall back to sending new message if it fails
+        try:
+            await MSG.status_msg.edit_text(
+                text=Messages.task_msg + l_ink + last_text,
+                reply_markup=InlineKeyboardMarkup(
                     [
-                        InlineKeyboardButton(
-                            "GitHub Repo ⛏️",
-                            url="https://github.com/AdittyaMondal/MiN3R-Colab-Station",
-                        ),
-                        InlineKeyboardButton(
-                            "Channel 📣",
-                            url="https://t.me/minerclouds",
-                        ),
-                    ],
-                ]
-            ),
-        )
+                        [
+                            InlineKeyboardButton(
+                                "GitHub Repo ⛏️",
+                                url="https://github.com/AdittyaMondal/MiN3R-Colab-Station",
+                            ),
+                            InlineKeyboardButton(
+                                "Channel 📣",
+                                url="https://t.me/minerclouds",
+                            ),
+                        ],
+                    ]
+                ),
+            )
+        except Exception as e:
+            logging.warning(f"Could not edit status message, sending new one: {e}")
+            MSG.status_msg = await colab_bot.send_message(
+                chat_id=OWNER,
+                text=Messages.task_msg + l_ink + last_text,
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                "GitHub Repo ⛏️",
+                                url="https://github.com/AdittyaMondal/MiN3R-Colab-Station",
+                            ),
+                            InlineKeyboardButton(
+                                "Channel 📣",
+                                url="https://t.me/minerclouds",
+                            ),
+                        ],
+                    ]
+                ),
+            )
 
         if is_leech:
             try:

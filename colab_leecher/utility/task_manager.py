@@ -69,8 +69,8 @@ async def taskScheduler():
     )
     Transfer.sent_file = []
     Transfer.sent_file_names = []
-    Transfer.down_bytes = [0, 0]
-    Transfer.up_bytes = [0, 0]
+    Transfer.down_bytes = []  # Reset to empty list, not [0, 0]
+    Transfer.up_bytes = []    # Reset to empty list, not [0, 0]
     Messages.download_name = ""
     Messages.task_msg = ""
     Messages.status_head = f"<b>📥 DOWNLOADING » </b>\n"
@@ -141,7 +141,11 @@ async def taskScheduler():
     Messages.src_link = f"https://t.me/c/{Messages.link_p}/{MSG.sent_msg.id}"
     Messages.task_msg += f"__[{BOT.Mode.type.capitalize()} {BOT.Mode.mode.capitalize()} as {BOT.Setting.stream_upload}]({Messages.src_link})__\n\n"
 
-    await MSG.status_msg.delete()
+    # Delete previous status message (might already be deleted or invalid)
+    try:
+        await MSG.status_msg.delete()
+    except Exception as e:
+        logging.warning(f"Could not delete previous status message: {e}")
     img = Paths.THMB_PATH if ospath.exists(Paths.THMB_PATH) else Paths.HERO_IMAGE
     MSG.status_msg = await colab_bot.send_photo(  # type: ignore
         chat_id=OWNER,

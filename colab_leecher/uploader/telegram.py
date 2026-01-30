@@ -16,15 +16,22 @@ async def progress_bar(current, total):
     elapsed_time_seconds = (datetime.now() - BotTimes.task_start).seconds
     if current > 0 and elapsed_time_seconds > 0:
         upload_speed = current / elapsed_time_seconds
-    eta = (Transfer.total_down_size - current - sum(Transfer.up_bytes)) / upload_speed
-    percentage = (current + sum(Transfer.up_bytes)) / Transfer.total_down_size * 100
+    
+    # Protect against division by zero
+    total_size = Transfer.total_down_size if Transfer.total_down_size > 0 else 1
+    uploaded_so_far = current + sum(Transfer.up_bytes)
+    remaining = max(0, total_size - uploaded_so_far)
+    
+    eta = remaining / upload_speed if upload_speed > 0 else 0
+    percentage = (uploaded_so_far / total_size) * 100
     percentage = min(percentage, 100.0)  # Cap at 100% to prevent overflow
+    
     await status_bar(
         down_msg=Messages.status_head,
         speed=f"{sizeUnit(upload_speed)}/s",
         percentage=percentage,
         eta=getTime(eta),
-        done=sizeUnit(current + sum(Transfer.up_bytes)),
+        done=sizeUnit(uploaded_so_far),
         left=sizeUnit(Transfer.total_down_size),
         engine="Pyrofork 💥",
     )

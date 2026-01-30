@@ -96,8 +96,8 @@ class YTDL:
 
 
 class Transfer:
-    down_bytes = [0, 0]
-    up_bytes = [0, 0]
+    down_bytes = []  # Empty list - values get appended during processing
+    up_bytes = []    # Empty list - values get appended during upload
     total_down_size = 0
     sent_file = []
     sent_file_names = []
