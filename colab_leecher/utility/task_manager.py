@@ -126,8 +126,11 @@ async def taskScheduler():
         makedirs(Paths.down_path)
     Messages.link_p = str(DUMP_ID)[4:]
 
-    # Use default thumbnail as fallback (video frame extraction happens during upload)
-    Paths.HERO_IMAGE = Paths.DEFAULT_HERO
+    try:
+        system(f"aria2c -d {Paths.WORK_PATH} -o Hero.jpg {Aria2c.pic_dwn_url}")
+    except Exception:
+        Paths.HERO_IMAGE = Paths.DEFAULT_HERO
+
 
     MSG.sent_msg = await colab_bot.send_message(chat_id=DUMP_ID, text=src_text[0])
 

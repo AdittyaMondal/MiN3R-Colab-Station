@@ -1,5 +1,8 @@
 # ⛏️ MiN3R × Colab Station | https://github.com/AdittyaMondal/MiN3R-Colab-Station
 
+# Suppress SyntaxWarnings from moviepy and other libraries on Python 3.12+
+import warnings
+warnings.filterwarnings("ignore", category=SyntaxWarning)
 
 import logging
 import os
