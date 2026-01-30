@@ -18,6 +18,7 @@ async def progress_bar(current, total):
         upload_speed = current / elapsed_time_seconds
     eta = (Transfer.total_down_size - current - sum(Transfer.up_bytes)) / upload_speed
     percentage = (current + sum(Transfer.up_bytes)) / Transfer.total_down_size * 100
+    percentage = min(percentage, 100.0)  # Cap at 100% to prevent overflow
     await status_bar(
         down_msg=Messages.status_head,
         speed=f"{sizeUnit(upload_speed)}/s",

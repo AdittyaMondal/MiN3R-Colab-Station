@@ -44,17 +44,46 @@ class BOT:
 
 # Temporary storage for pending task data (before user selects task type)
 # This prevents overwriting running task's global state
+# Use a dictionary with getter/setter to ensure data isolation between queued tasks
 class PendingTask:
-    source = []
-    mode = "leech"
-    ytdl = False
-    custom_name = ""
-    zip_pswd = ""
-    unzip_pswd = ""
-    stream_upload = True
-    caption = "code"
-    convert_video = True
-    video_out = "mp4"
+    _data = {}
+    
+    @classmethod
+    def set(cls, source, mode, ytdl, custom_name, zip_pswd, unzip_pswd, 
+            stream_upload, caption, convert_video, video_out):
+        """Store pending task data - makes a copy of source list to avoid reference issues"""
+        cls._data = {
+            "source": source.copy() if isinstance(source, list) else [source],
+            "mode": mode,
+            "ytdl": ytdl,
+            "custom_name": custom_name,
+            "zip_pswd": zip_pswd,
+            "unzip_pswd": unzip_pswd,
+            "stream_upload": stream_upload,
+            "caption": caption,
+            "convert_video": convert_video,
+            "video_out": video_out
+        }
+    
+    @classmethod
+    def get(cls):
+        """Get a copy of pending task data"""
+        return cls._data.copy()
+    
+    @classmethod
+    def get_source(cls):
+        """Get a copy of the source list"""
+        return cls._data.get("source", []).copy()
+    
+    @classmethod
+    def get_value(cls, key, default=None):
+        """Get a specific value from pending task data"""
+        return cls._data.get(key, default)
+    
+    @classmethod
+    def clear(cls):
+        """Clear pending task data after it's been queued"""
+        cls._data = {}
 
 
 class YTDL:

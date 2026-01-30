@@ -149,16 +149,19 @@ async def handle_url(client, message):
             break
 
     # Store in PendingTask to avoid overwriting running task's global state
-    PendingTask.source = temp_source.copy()
-    PendingTask.mode = BOT.Mode.mode
-    PendingTask.ytdl = BOT.Mode.ytdl
-    PendingTask.custom_name = custom_name
-    PendingTask.zip_pswd = zip_pswd
-    PendingTask.unzip_pswd = unzip_pswd
-    PendingTask.stream_upload = BOT.Options.stream_upload
-    PendingTask.caption = BOT.Options.caption
-    PendingTask.convert_video = BOT.Options.convert_video
-    PendingTask.video_out = BOT.Options.video_out
+    # Use set() method to ensure data is properly copied and isolated
+    PendingTask.set(
+        source=temp_source.copy(),
+        mode=BOT.Mode.mode,
+        ytdl=BOT.Mode.ytdl,
+        custom_name=custom_name,
+        zip_pswd=zip_pswd,
+        unzip_pswd=unzip_pswd,
+        stream_upload=BOT.Options.stream_upload,
+        caption=BOT.Options.caption,
+        convert_video=BOT.Options.convert_video,
+        video_out=BOT.Options.video_out
+    )
     
     # Only update global state if no task is running
     if not BOT.State.task_going:
@@ -186,7 +189,7 @@ async def handle_url(client, message):
         queue_notice = ""
     
     await message.reply_text(
-        text=f"<b>🐹 Select Type of {PendingTask.mode.capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>{queue_notice}",
+        text=f"<b>🐹 Select Type of {PendingTask.get_value('mode', 'leech').capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>{queue_notice}",
         reply_markup=keyboard,
         quote=True,
     )
@@ -208,25 +211,29 @@ async def handle_options(client, callback_query):
         # Check if a task is already running - queue instead of blocking
         if BOT.State.task_going:
             # Add to queue using PendingTask data (not global BOT which is being used by running task)
+            # Use getter methods to get copies of the data
+            pending_data = PendingTask.get()
             task = await task_queue.add_task(
-                source=PendingTask.source.copy(),  # Copy to avoid reference issues
-                mode=PendingTask.mode,
+                source=PendingTask.get_source(),  # Get a copy of source list
+                mode=pending_data.get("mode", "leech"),
                 task_type=callback_query.data,
-                ytdl=PendingTask.ytdl,
-                custom_name=PendingTask.custom_name,
-                zip_pswd=PendingTask.zip_pswd,
-                unzip_pswd=PendingTask.unzip_pswd,
-                stream_upload=PendingTask.stream_upload,
-                caption_style=PendingTask.caption,
-                convert_video=PendingTask.convert_video,
-                video_out=PendingTask.video_out
+                ytdl=pending_data.get("ytdl", False),
+                custom_name=pending_data.get("custom_name", ""),
+                zip_pswd=pending_data.get("zip_pswd", ""),
+                unzip_pswd=pending_data.get("unzip_pswd", ""),
+                stream_upload=pending_data.get("stream_upload", True),
+                caption_style=pending_data.get("caption", "code"),
+                convert_video=pending_data.get("convert_video", True),
+                video_out=pending_data.get("video_out", "mp4")
             )
+            # Clear pending task data after queuing to prevent stale data
+            PendingTask.clear()
             position = task_queue.get_queue_position(task.task_id)
             await colab_bot.send_message(
                 chat_id=OWNER,
                 text=f"✅ **Task Queued Successfully!**\n\n"
                      f"📋 Task ID: `{task.task_id}`\n"
-                     f"📦 Type: {callback_query.data.capitalize()} {PendingTask.mode.capitalize()}\n"
+                     f"📦 Type: {callback_query.data.capitalize()} {pending_data.get('mode', 'leech').capitalize()}\n"
                      f"📊 Position in queue: #{position}\n\n"
                      f"Your task will start automatically after the current task finishes.\n"
                      f"Use /queue to see all pending tasks",
@@ -409,25 +416,29 @@ async def handle_options(client, callback_query):
         # Check if a task is already running - queue instead of blocking
         if BOT.State.task_going:
             # Add to queue using PendingTask data
+            # Use getter methods to get copies of the data
+            pending_data = PendingTask.get()
             task = await task_queue.add_task(
-                source=PendingTask.source.copy(),
-                mode=PendingTask.mode,
+                source=PendingTask.get_source(),  # Get a copy of source list
+                mode=pending_data.get("mode", "leech"),
                 task_type="normal",  # YTDL tasks are always "normal" type
                 ytdl=ytdl_enabled,
-                custom_name=PendingTask.custom_name,
-                zip_pswd=PendingTask.zip_pswd,
-                unzip_pswd=PendingTask.unzip_pswd,
-                stream_upload=PendingTask.stream_upload,
-                caption_style=PendingTask.caption,
-                convert_video=PendingTask.convert_video,
-                video_out=PendingTask.video_out
+                custom_name=pending_data.get("custom_name", ""),
+                zip_pswd=pending_data.get("zip_pswd", ""),
+                unzip_pswd=pending_data.get("unzip_pswd", ""),
+                stream_upload=pending_data.get("stream_upload", True),
+                caption_style=pending_data.get("caption", "code"),
+                convert_video=pending_data.get("convert_video", True),
+                video_out=pending_data.get("video_out", "mp4")
             )
+            # Clear pending task data after queuing to prevent stale data
+            PendingTask.clear()
             position = task_queue.get_queue_position(task.task_id)
             await colab_bot.send_message(
                 chat_id=OWNER,
                 text=f"✅ **Task Queued Successfully!**\n\n"
                      f"📋 Task ID: `{task.task_id}`\n"
-                     f"📦 Type: YTDL {PendingTask.mode.capitalize()}\n"
+                     f"📦 Type: YTDL {pending_data.get('mode', 'leech').capitalize()}\n"
                      f"📊 Position in queue: #{position}\n\n"
                      f"Your task will start automatically after the current task finishes.\n"
                      f"Use /queue to see all pending tasks",
