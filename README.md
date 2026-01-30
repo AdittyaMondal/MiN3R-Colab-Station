@@ -53,7 +53,13 @@
 
 ### Deploy in 3 Easy Steps
 
-1. **Clone the repository** or open the Colab notebook
+<div align="center">
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/YOUR_NOTEBOOK_LINK_HERE?usp=sharing)
+
+</div>
+
+1. **Click the badge above** to open the notebook
 2. **Configure your settings** (API_ID, API_HASH, BOT_TOKEN, etc.)
 3. **Run the bot** and start transferring!
 

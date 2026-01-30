@@ -122,11 +122,16 @@ async def handle_url(client, message):
 
     if src_request_msg:
         await src_request_msg.delete()
-    if BOT.State.task_going == False and BOT.State.started:
-        temp_source = message.text.splitlines()
+    
+    if not BOT.State.started:
+        return  # User hasn't initiated a task command yet
+    
+    # Parse the source links and options
+    temp_source = message.text.splitlines()
 
-        # Check for arguments in message
-        for _ in range(3):
+    # Check for arguments in message
+    for _ in range(3):
+        if temp_source and temp_source[-1]:
             if temp_source[-1][0] == "[":
                 BOT.Options.custom_name = temp_source[-1][1:-1]
                 temp_source.pop()
@@ -138,45 +143,36 @@ async def handle_url(client, message):
                 temp_source.pop()
             else:
                 break
+        else:
+            break
 
-        BOT.SOURCE = temp_source
-        keyboard = InlineKeyboardMarkup(
+    BOT.SOURCE = temp_source
+    
+    # Show task type selection regardless of whether another task is running
+    # The actual execution will be queued if needed
+    keyboard = InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("Regular", callback_data="normal")],
             [
-                [InlineKeyboardButton("Regular", callback_data="normal")],
-                [
-                    InlineKeyboardButton("Compress", callback_data="zip"),
-                    InlineKeyboardButton("Extract", callback_data="unzip"),
-                ],
-                [InlineKeyboardButton("UnDoubleZip", callback_data="undzip")],
-            ]
-        )
-        await message.reply_text(
-            text=f"<b>🐹 Select Type of {BOT.Mode.mode.capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>",
-            reply_markup=keyboard,
-            quote=True,
-        )
-    elif BOT.State.started:
-        # Queue the new task instead of rejecting
-        task = await task_queue.add_task(
-            source=temp_source,
-            mode=BOT.Mode.mode,
-            task_type="normal",  # Will be set by callback
-            ytdl=BOT.Mode.ytdl,
-            custom_name=BOT.Options.custom_name,
-            zip_pswd=BOT.Options.zip_pswd,
-            unzip_pswd=BOT.Options.unzip_pswd,
-            stream_upload=BOT.Options.stream_upload,
-            caption_style=BOT.Options.caption,
-            convert_video=BOT.Options.convert_video,
-            video_out=BOT.Options.video_out
-        )
-        position = task_queue.get_queue_position(task.task_id)
-        await message.reply_text(
-            f"✅ <b>Task queued!</b>\n\n"
-            f"📋 Task ID: <code>{task.task_id}</code>\n"
-            f"📊 Position in queue: {position}\n\n"
-            f"Use /queue to see all pending tasks"
-        )
+                InlineKeyboardButton("Compress", callback_data="zip"),
+                InlineKeyboardButton("Extract", callback_data="unzip"),
+            ],
+            [InlineKeyboardButton("UnDoubleZip", callback_data="undzip")],
+        ]
+    )
+    
+    # If a task is running, inform user this will be queued
+    if BOT.State.task_going:
+        queue_notice = f"\n\n⏳ <i>A task is currently running. This will be queued (Position: #{task_queue.pending_count + 1})</i>"
+    else:
+        queue_notice = ""
+    
+    await message.reply_text(
+        text=f"<b>🐹 Select Type of {BOT.Mode.mode.capitalize()} You Want » </b>\n\nRegular:<i> Normal file upload</i>\nCompress:<i> Zip file upload</i>\nExtract:<i> extract before upload</i>\nUnDoubleZip:<i> Unzip then compress</i>{queue_notice}",
+        reply_markup=keyboard,
+        quote=True,
+    )
+
 
 
 @colab_bot.on_callback_query()
@@ -190,22 +186,53 @@ async def handle_options(client, callback_query):
             chat_id=callback_query.message.chat.id,
             message_ids=callback_query.message.reply_to_message_id,
         )
-        MSG.status_msg = await colab_bot.send_message(
-            chat_id=OWNER,
-            text="#STARTING_TASK\n\n**Starting your task in a few Seconds...🦐**",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [InlineKeyboardButton("Cancel ❌", callback_data="cancel")],
-                ]
-            ),
-        )
-        BOT.State.task_going = True
-        BOT.State.started = False
-        BotTimes.start_time = datetime.now()
-        event_loop = get_event_loop()
-        BOT.TASK = event_loop.create_task(taskScheduler())  # type: ignore
-        await BOT.TASK
-        BOT.State.task_going = False
+        
+        # Check if a task is already running - queue instead of blocking
+        if BOT.State.task_going:
+            # Add to queue
+            task = await task_queue.add_task(
+                source=BOT.SOURCE,
+                mode=BOT.Mode.mode,
+                task_type=callback_query.data,
+                ytdl=BOT.Mode.ytdl,
+                custom_name=BOT.Options.custom_name,
+                zip_pswd=BOT.Options.zip_pswd,
+                unzip_pswd=BOT.Options.unzip_pswd,
+                stream_upload=BOT.Options.stream_upload,
+                caption_style=BOT.Options.caption,
+                convert_video=BOT.Options.convert_video,
+                video_out=BOT.Options.video_out
+            )
+            position = task_queue.get_queue_position(task.task_id)
+            await colab_bot.send_message(
+                chat_id=OWNER,
+                text=f"✅ **Task Queued Successfully!**\n\n"
+                     f"📋 Task ID: `{task.task_id}`\n"
+                     f"📦 Type: {callback_query.data.capitalize()} {BOT.Mode.mode.capitalize()}\n"
+                     f"📊 Position in queue: #{position}\n\n"
+                     f"Your task will start automatically after the current task finishes.\n"
+                     f"Use /queue to see all pending tasks",
+            )
+            BOT.State.started = False
+        else:
+            # Execute immediately
+            MSG.status_msg = await colab_bot.send_message(
+                chat_id=OWNER,
+                text="#STARTING_TASK\n\n**Starting your task in a few Seconds...🦐**",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("Cancel ❌", callback_data="cancel")],
+                    ]
+                ),
+            )
+            BOT.State.task_going = True
+            BOT.State.started = False
+            BotTimes.start_time = datetime.now()
+            event_loop = get_event_loop()
+            BOT.TASK = event_loop.create_task(taskScheduler())  # type: ignore
+            await BOT.TASK
+            BOT.State.task_going = False
+
 
     elif callback_query.data == "video":
         keyboard = InlineKeyboardMarkup(
@@ -359,22 +386,52 @@ async def handle_options(client, callback_query):
             chat_id=callback_query.message.chat.id,
             message_ids=callback_query.message.reply_to_message_id,
         )
-        MSG.status_msg = await colab_bot.send_message(
-            chat_id=OWNER,
-            text="#STARTING_TASK\n\n**Starting your task in a few Seconds...�**",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [InlineKeyboardButton("Cancel ❌", callback_data="cancel")],
-                ]
-            ),
-        )
-        BOT.State.task_going = True
-        BOT.State.started = False
-        BotTimes.start_time = datetime.now()
-        event_loop = get_event_loop()
-        BOT.TASK = event_loop.create_task(taskScheduler())  # type: ignore
-        await BOT.TASK
-        BOT.State.task_going = False
+        
+        # Check if a task is already running - queue instead of blocking
+        if BOT.State.task_going:
+            # Add to queue
+            task = await task_queue.add_task(
+                source=BOT.SOURCE,
+                mode=BOT.Mode.mode,
+                task_type=BOT.Mode.type,
+                ytdl=BOT.Mode.ytdl,
+                custom_name=BOT.Options.custom_name,
+                zip_pswd=BOT.Options.zip_pswd,
+                unzip_pswd=BOT.Options.unzip_pswd,
+                stream_upload=BOT.Options.stream_upload,
+                caption_style=BOT.Options.caption,
+                convert_video=BOT.Options.convert_video,
+                video_out=BOT.Options.video_out
+            )
+            position = task_queue.get_queue_position(task.task_id)
+            await colab_bot.send_message(
+                chat_id=OWNER,
+                text=f"✅ **Task Queued Successfully!**\n\n"
+                     f"📋 Task ID: `{task.task_id}`\n"
+                     f"📦 Type: YTDL {BOT.Mode.mode.capitalize()}\n"
+                     f"📊 Position in queue: #{position}\n\n"
+                     f"Your task will start automatically after the current task finishes.\n"
+                     f"Use /queue to see all pending tasks",
+            )
+            BOT.State.started = False
+        else:
+            # Execute immediately
+            MSG.status_msg = await colab_bot.send_message(
+                chat_id=OWNER,
+                text="#STARTING_TASK\n\n**Starting your task in a few Seconds...🦐**",
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [InlineKeyboardButton("Cancel ❌", callback_data="cancel")],
+                    ]
+                ),
+            )
+            BOT.State.task_going = True
+            BOT.State.started = False
+            BotTimes.start_time = datetime.now()
+            event_loop = get_event_loop()
+            BOT.TASK = event_loop.create_task(taskScheduler())  # type: ignore
+            await BOT.TASK
+            BOT.State.task_going = False
 
     # If user Wants to Stop The Task
     elif callback_query.data == "cancel":

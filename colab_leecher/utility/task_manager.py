@@ -46,16 +46,9 @@ async def task_starter(message, text):
     global BOT
     await message.delete()
     BOT.State.started = True
-    if BOT.State.task_going == False:
-        src_request_msg = await message.reply_text(text)
-        return src_request_msg
-    else:
-        msg = await message.reply_text(
-            "I am already working ! Please wait until I finish !!"
-        )
-        await sleep(15)
-        await msg.delete()
-        return None
+    # Always allow new task initiation - the queue system handles execution order
+    src_request_msg = await message.reply_text(text)
+    return src_request_msg
 
 
 async def taskScheduler():
@@ -133,10 +126,8 @@ async def taskScheduler():
         makedirs(Paths.down_path)
     Messages.link_p = str(DUMP_ID)[4:]
 
-    try:
-        system(f"aria2c -d {Paths.WORK_PATH} -o Hero.jpg {Aria2c.pic_dwn_url}")
-    except Exception:
-        Paths.HERO_IMAGE = Paths.DEFAULT_HERO
+    # Use default thumbnail as fallback (video frame extraction happens during upload)
+    Paths.HERO_IMAGE = Paths.DEFAULT_HERO
 
     MSG.sent_msg = await colab_bot.send_message(chat_id=DUMP_ID, text=src_text[0])
 
